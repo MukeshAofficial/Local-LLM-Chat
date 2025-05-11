@@ -117,7 +117,7 @@ localchatbot
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/your-username/Local-LLM-Chat.git
+   git clone https://github.com/MukeshAofficial/Local-LLM-Chat.git
    cd Local-LLM-Chat
    ```
 
