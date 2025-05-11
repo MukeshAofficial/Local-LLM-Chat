@@ -13,7 +13,7 @@ import { Bot, Mic, Send, User } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import type { ChatMessage } from "@/types/chat"
 import { MessageContent } from "./message-content"
-import { LoadingDots } from "./loading-dots"
+
 
 // Declare SpeechRecognition interface
 declare global {
@@ -99,18 +99,7 @@ export function Chat() {
           ) : (
             messages.map((message, index) => <ChatMessageItem key={index} message={message} />)
           )}
-          {isLoading && (
-            <Card className="flex w-full max-w-[80%] gap-3 rounded-lg p-4">
-              <Avatar className="h-8 w-8">
-                <AvatarFallback className="bg-primary text-primary-foreground">
-                  <Bot className="h-4 w-4" />
-                </AvatarFallback>
-              </Avatar>
-              <div className="flex-1">
-                <LoadingDots />
-              </div>
-            </Card>
-          )}
+         
         </div>
       </ScrollArea>
       <div className="border-t bg-background p-4">
@@ -144,10 +133,17 @@ export function Chat() {
 }
 
 function ChatMessageItem({ message }: { message: ChatMessage }) {
-  const isUser = message.role === "user"
+  const isUser = message.role === "user";
 
   return (
-    <Card className={cn("flex w-full max-w-[80%] gap-3 rounded-lg p-4", isUser ? "ml-auto" : "")}>
+    <Card
+      className={cn(
+        "flex gap-3 rounded-lg p-4",
+        isUser
+          ? "ml-auto max-w-[80%] w-fit" // User messages: align right, fit content width
+          : "max-w-[80%] w-full"      // Bot messages: align left, full width within max
+      )}
+    >
       <Avatar className="h-8 w-8">
         {isUser ? (
           <AvatarFallback className="bg-primary text-primary-foreground">
@@ -163,5 +159,5 @@ function ChatMessageItem({ message }: { message: ChatMessage }) {
         <MessageContent content={message.content} />
       </div>
     </Card>
-  )
+  );
 }

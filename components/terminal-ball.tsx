@@ -1,27 +1,34 @@
 "use client"
 
 import type React from "react"
-
 import { useState, useEffect, useRef } from "react"
 import { cn } from "@/lib/utils"
 import { Terminal, X, Maximize2, Minimize2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { useTerminalStore } from "@/hooks/use-terminal"
+// Import useTerminal directly to get the visibility state
+import { useTerminal } from "@/hooks/use-terminal"
 
 interface TerminalBallProps {
   className?: string
 }
 
 export function TerminalBall({ className }: TerminalBallProps) {
+  // Get isBallVisible from the useTerminal hook
+  const { output, clearOutput, logToTerminal, isBallVisible } = useTerminal()
   const [isOpen, setIsOpen] = useState(false)
   const [isExpanded, setIsExpanded] = useState(false)
   const [hasPermission, setHasPermission] = useState(false)
-  const { output, clearOutput, logToTerminal } = useTerminalStore()
+  // Removed useTerminalStore() call here as useTerminal() provides what's needed
   const [position, setPosition] = useState({ x: 20, y: 20 })
   const ballRef = useRef<HTMLDivElement>(null)
   const isDragging = useRef(false)
   const dragOffset = useRef({ x: 0, y: 0 })
+
+  // If the ball is not supposed to be visible, render nothing
+  if (!isBallVisible) {
+    return null
+  }
 
   // Auto-scroll to bottom when new output is added
   useEffect(() => {
@@ -39,7 +46,6 @@ export function TerminalBall({ className }: TerminalBallProps) {
       const newX = e.clientX - dragOffset.current.x
       const newY = e.clientY - dragOffset.current.y
 
-      // Keep the ball within the viewport
       const maxX = window.innerWidth - (ballRef.current?.offsetWidth || 60)
       const maxY = window.innerHeight - (ballRef.current?.offsetHeight || 60)
 
@@ -60,7 +66,7 @@ export function TerminalBall({ className }: TerminalBallProps) {
       window.removeEventListener("mousemove", handleMouseMove)
       window.removeEventListener("mouseup", handleMouseUp)
     }
-  }, [])
+  }, [position.x, position.y]) // Added position to dependencies for correctness, though it might not be strictly necessary for this effect.
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if (ballRef.current) {
@@ -88,17 +94,16 @@ export function TerminalBall({ className }: TerminalBallProps) {
     setIsExpanded(!isExpanded)
   }
 
-  const clearTerminal = (e: React.MouseEvent) => {
+  const clearTerminalLogs = (e: React.MouseEvent) => { // Renamed to avoid conflict
     e.stopPropagation()
     clearOutput()
   }
 
   useEffect(() => {
-    // Add initial terminal messages
     if (output.length === 0) {
       const hostname = window.location.hostname
       if (hostname !== "localhost" && hostname !== "127.0.0.1") {
-        clearOutput()
+        // clearOutput(); // Consider if this clear is needed or if it should be outside the if
         setTimeout(() => {
           logToTerminal("Running in preview/production environment")
           logToTerminal("Local LLM server at 127.0.0.1:11434 won't be accessible")
@@ -106,7 +111,7 @@ export function TerminalBall({ className }: TerminalBallProps) {
           logToTerminal("To use with a real LLM server, run this app locally")
         }, 500)
       } else {
-        clearOutput()
+        // clearOutput(); // Same consideration
         setTimeout(() => {
           logToTerminal("Running on localhost")
           logToTerminal("Will attempt to connect to LLM server at 127.0.0.1:11434")
@@ -154,7 +159,7 @@ export function TerminalBall({ className }: TerminalBallProps) {
                   variant="ghost"
                   size="icon"
                   className="h-5 w-5 text-white/80 hover:text-white hover:bg-white/10"
-                  onClick={clearTerminal}
+                  onClick={clearTerminalLogs} // Use renamed function
                 >
                   <X className="h-3 w-3" />
                 </Button>

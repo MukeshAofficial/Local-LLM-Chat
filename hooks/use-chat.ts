@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useState, useCallback } from "react"
 import type { ChatMessage } from "@/types/chat"
 import { useToast } from "@/hooks/use-toast"
@@ -23,115 +22,166 @@ export function useChat() {
       e.preventDefault()
       if (!input.trim() || isLoading) return
 
+      const userInput = input; // Capture input before clearing
       // Add user message
       const userMessage: ChatMessage = {
         role: "user",
-        content: input,
+        content: userInput,
       }
       setMessages((prev) => [...prev, userMessage])
       setInput("")
       setIsLoading(true)
 
-      logToTerminal(`User message: ${input}`)
-      logToTerminal("Sending request to LLM server...")
+      // Add a placeholder for the assistant's message
+      // We'll update this message instance as stream data comes in
+      const assistantMessagePlaceholder: ChatMessage = {
+        role: "assistant",
+        content: "",
+      }
+      setMessages((prevMessages) => [...prevMessages, assistantMessagePlaceholder])
+
+      logToTerminal(`User message: ${userInput}`)
+      logToTerminal("Sending request to LLM server (streaming)...")
 
       try {
-        // Try to call the local LLM server
         logToTerminal("POST http://127.0.0.1:11434/api/generate")
 
-        // Use a timeout to prevent hanging if the server is unreachable
         const controller = new AbortController()
-        const timeoutId = setTimeout(() => controller.abort(), 5000) // 5 second timeout
+        const timeoutId = setTimeout(() => {
+          logToTerminal("Request timed out.")
+          controller.abort()
+        }, 50000) // 50 second timeout
 
-        try {
-          const response = await fetch("http://127.0.0.1:11434/api/generate", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              model: "llama3",
-              prompt: input,
-              stream: false,
-            }),
-            signal: controller.signal,
-          })
-
-          clearTimeout(timeoutId)
-
-          if (!response.ok) {
-            logToTerminal(`Error: Server returned ${response.status}`)
-            throw new Error(`Server returned ${response.status}`)
-          }
-
-          logToTerminal("Response received from server")
-          const data = await response.json()
-          logToTerminal(`Generated ${data.response?.length || 0} characters of text`)
-
-          // Add AI response
-          const aiMessage: ChatMessage = {
-            role: "assistant",
-            content: data.response || "I couldn't generate a response. Please try again.",
-          }
-
-          setMessages((prev) => [...prev, aiMessage])
-          return
-        } catch (fetchError) {
-          clearTimeout(timeoutId)
-          logToTerminal(`Fetch error: ${fetchError instanceof Error ? fetchError.message : String(fetchError)}`)
-
-          // If we're in a preview/production environment, use mock mode
-          if (window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") {
-            logToTerminal("Using mock response mode (not on localhost)")
-
-            // Generate a mock response
-            const mockResponses = [
-              "I'm running in mock mode since I can't access your local LLM server. In a real setup, I would connect to your server at 127.0.0.1:11434.",
-              "This is a simulated response. When running locally, I'll connect to your LLM server. In this preview environment, I'm using mock data instead.",
-              "I notice we're in a preview environment where I can't access your local LLM. I'm providing this mock response instead. On your local machine, I'll connect properly to 127.0.0.1:11434.",
-            ]
-
-            // Simulate a delay to mimic processing time
-            await new Promise((resolve) => setTimeout(resolve, 1000))
-
-            const mockResponse = mockResponses[Math.floor(Math.random() * mockResponses.length)]
-
-            const aiMessage: ChatMessage = {
-              role: "assistant",
-              content: mockResponse,
-            }
-
-            setMessages((prev) => [...prev, aiMessage])
-            logToTerminal("Generated mock response")
-            return
-          }
-
-          // If we're on localhost but still can't connect, rethrow the error
-          throw fetchError
-        }
-      } catch (error) {
-        console.error("Error:", error)
-        logToTerminal(`Connection error: ${error instanceof Error ? error.message : String(error)}`)
-
-        toast({
-          title: "Connection Error",
-          description: "Failed to connect to the LLM server at 127.0.0.1:11434. Make sure your server is running.",
-          variant: "destructive",
+        const response = await fetch("http://127.0.0.1:11434/api/generate", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "mistral:latest",
+            prompt: userInput,
+            stream: true, // ENABLE STREAMING
+          }),
+          signal: controller.signal,
         })
 
-        // Add error message
-        const errorMessage: ChatMessage = {
-          role: "assistant",
-          content:
-            "I'm having trouble connecting to the LLM server. Please check that your local server is running at 127.0.0.1:11434. If you're viewing this in a preview environment, you'll need to run the app locally to connect to your LLM server.",
+        clearTimeout(timeoutId)
+
+        if (!response.ok) {
+          logToTerminal(`Error: Server returned ${response.status}`)
+          // Remove the placeholder if the request fails early
+          setMessages((prev) => prev.slice(0, -1))
+          throw new Error(`Server returned ${response.status}`)
         }
-        setMessages((prev) => [...prev, errorMessage])
+
+        if (!response.body) {
+          logToTerminal("Error: Response body is null.")
+           // Remove the placeholder
+          setMessages((prev) => prev.slice(0, -1))
+          throw new Error("Response body is null")
+        }
+
+        logToTerminal("Response received, processing stream...")
+        const reader = response.body.getReader()
+        const decoder = new TextDecoder()
+        let streamEnded = false
+
+        while (!streamEnded) {
+          const { value, done } = await reader.read()
+          if (done) {
+            streamEnded = true
+            logToTerminal("Stream ended by reader.")
+            break
+          }
+
+          const chunk = decoder.decode(value, { stream: true }) // Important: {stream: true} for multi-byte chars
+          const lines = chunk.split("\n").filter((line) => line.trim() !== "")
+
+          for (const line of lines) {
+            try {
+              const parsedChunk = JSON.parse(line)
+              if (parsedChunk.response) {
+                setMessages((prevMessages) =>
+                  prevMessages.map((msg, index) => {
+                    if (index === prevMessages.length - 1 && msg.role === "assistant") {
+                      return { ...msg, content: msg.content + parsedChunk.response }
+                    }
+                    return msg
+                  })
+                )
+              }
+              if (parsedChunk.done) {
+                streamEnded = true
+                logToTerminal("Stream complete (parsedChunk.done is true).")
+                break // Break from for-loop, while loop condition will handle exit
+              }
+            } catch (error) {
+              logToTerminal(`Error parsing streamed JSON line: "${line}" - ${error}`)
+              // Continue to next line, or handle error more gracefully if needed
+            }
+          }
+        }
+        // No explicit return here, flow continues to finally
+      } catch (fetchError) {
+        clearTimeout(timeoutId) // Ensure timeout is cleared on any fetch-related error
+        logToTerminal(`Fetch error: ${fetchError instanceof Error ? fetchError.message : String(fetchError)}`)
+
+        // If an assistant placeholder was added, attempt to remove or update it with an error.
+        setMessages((prevMessages) => {
+          const lastMessage = prevMessages[prevMessages.length -1];
+          if(lastMessage && lastMessage.role === 'assistant' && lastMessage.content === "") {
+            // If it's the empty placeholder, remove it.
+            // Or update it with an error message. For now, let's try updating then removing if it's truly an API error.
+          }
+          return prevMessages;
+        });
+
+
+        if (window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") {
+          logToTerminal("Using mock response mode (not on localhost)")
+          const mockResponses = [
+            "I'm running in mock mode since I can't access your local LLM server. In a real setup, I would connect to your server at 127.0.0.1:11434.",
+            "This is a simulated response. When running locally, I'll connect to your LLM server. In this preview environment, I'm using mock data instead.",
+          ]
+          await new Promise((resolve) => setTimeout(resolve, 1000))
+          const mockResponse = mockResponses[Math.floor(Math.random() * mockResponses.length)]
+          setMessages((prevMessages) =>
+            prevMessages.map((msg, index) => {
+              if (index === prevMessages.length - 1 && msg.role === "assistant") {
+                return { ...msg, content: mockResponse }; // Update the placeholder
+              }
+              return msg;
+            })
+          );
+          logToTerminal("Generated mock response")
+        } else {
+            // If on localhost and fetchError occurred, show connection error toast and update placeholder
+            console.error("Error:", fetchError)
+            toast({
+              title: "Connection Error",
+              description: "Failed to connect to the LLM server. Make sure your server is running.",
+              variant: "destructive",
+            })
+            const errorMessageContent = "I'm having trouble connecting to the LLM server. Please check that your local server is running at 127.0.0.1:11434."
+            setMessages((prevMessages) =>
+              prevMessages.map((msg, index) => {
+                if (index === prevMessages.length - 1 && msg.role === "assistant") {
+                  return { ...msg, content: errorMessageContent };
+                }
+                return msg;
+              })
+            );
+        }
       } finally {
         setIsLoading(false)
-        logToTerminal("Request completed")
+        logToTerminal("Request processing completed")
       }
     },
-    [input, isLoading, toast, logToTerminal],
+    // Ensure `messages` is not in dependencies if you are always updating the last one based on length.
+    // If you pass `prevMessages` to `setMessages`, `messages` itself isn't strictly needed here
+    // unless some other logic within `handleSubmit` directly reads from the `messages` state variable
+    // *before* `setMessages` is called. Given the current flow, it should be fine.
+    [input, isLoading, toast, logToTerminal]
   )
 
   return {

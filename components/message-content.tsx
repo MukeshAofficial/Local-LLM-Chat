@@ -20,30 +20,50 @@ export function MessageContent({ content }: MessageContentProps) {
   }
 
   return (
-    <ReactMarkdown
+    // Apply the className to this new wrapper div
+    <div
       className={cn(
         "prose dark:prose-invert prose-p:leading-relaxed prose-pre:p-0",
         "max-w-none",
-        "prose-code:before:hidden prose-code:after:hidden",
+        "prose-code:before:hidden prose-code:after:hidden"
       )}
-      components={{
-        pre({ node, className, children, ...props }) {
-          return (
-            <pre className="mb-2 mt-2 overflow-auto rounded-lg bg-black/10 p-2 dark:bg-white/10" {...props}>
-              {children}
-            </pre>
-          )
-        },
-        code({ node, className, children, ...props }) {
-          return (
-            <code className="rounded-sm bg-black/10 px-1 py-0.5 font-mono text-sm dark:bg-white/10" {...props}>
-              {children}
-            </code>
-          )
-        },
-      }}
     >
-      {content}
-    </ReactMarkdown>
+      <ReactMarkdown
+        // The className prop has been removed from here
+        components={{
+          pre({ node, className, children, ...props }) {
+            // The className prop here is passed by react-markdown (e.g., for language classes)
+            // and is fine. We are merging it with our custom styles.
+            return (
+              <pre
+                className={cn(
+                  "mb-2 mt-2 overflow-auto rounded-lg bg-black/10 p-2 dark:bg-white/10",
+                  className // Include className from markdown if present
+                )}
+                {...props}
+              >
+                {children}
+              </pre>
+            )
+          },
+          code({ node, className, children, ...props }) {
+            // Similar to pre, className here is from markdown.
+            return (
+              <code
+                className={cn(
+                  "rounded-sm bg-black/10 px-1 py-0.5 font-mono text-sm dark:bg-white/10",
+                  className // Include className from markdown if present
+                )}
+                {...props}
+              >
+                {children}
+              </code>
+            )
+          },
+        }}
+      >
+        {content}
+      </ReactMarkdown>
+    </div>
   )
 }

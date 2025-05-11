@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { useToast } from "@/hooks/use-toast"
 import { PlusCircle } from "lucide-react"
+import { useTerminal } from "@/hooks/use-terminal" // Import useTerminal
 
 interface Tool {
   id: string
@@ -18,6 +19,8 @@ interface Tool {
 
 export function ToolsSettings() {
   const { toast } = useToast()
+  const { isBallVisible, toggleBallVisibility } = useTerminal() // Get terminal state
+
   const [tools, setTools] = useState<Tool[]>([
     { id: "1", name: "Web Search", description: "Search the web for information", enabled: true },
     { id: "2", name: "Calculator", description: "Perform mathematical calculations", enabled: true },
@@ -56,8 +59,42 @@ export function ToolsSettings() {
     })
   }
 
+  const handleToggleTerminalBall = () => {
+    const currentVisibility = isBallVisible; // Capture state before toggle
+    toggleBallVisibility();
+    toast({
+      title: !currentVisibility ? "Terminal Ball Shown" : "Terminal Ball Hidden", // Logic based on state *before* toggle
+      description: `The terminal ball icon will now be ${!currentVisibility ? "visible" : "hidden"}.`,
+    });
+  };
+
   return (
     <div className="space-y-6">
+      {/* New Card for UI Features like Terminal Ball Toggle */}
+      <Card>
+        <CardHeader>
+          <CardTitle>UI Features</CardTitle>
+          <CardDescription>Manage additional UI elements and features.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between space-x-2 rounded-lg border p-4">
+              <div className="space-y-0.5">
+                <Label htmlFor="terminal-ball-toggle" className="font-medium">Terminal Ball</Label>
+                <p className="text-sm text-muted-foreground">
+                  Show or hide the floating terminal ball icon on the interface.
+                </p>
+              </div>
+              <Switch
+                checked={isBallVisible}
+                onCheckedChange={handleToggleTerminalBall}
+                id="terminal-ball-toggle"
+              />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader>
           <CardTitle>Available Tools</CardTitle>
@@ -68,8 +105,8 @@ export function ToolsSettings() {
             {tools.map((tool) => (
               <div key={tool.id} className="flex items-center justify-between space-x-2 rounded-lg border p-4">
                 <div className="space-y-0.5">
-                  <div className="font-medium">{tool.name}</div>
-                  <div className="text-sm text-muted-foreground">{tool.description}</div>
+                  <Label htmlFor={`tool-${tool.id}`} className="font-medium">{tool.name}</Label>
+                  <p className="text-sm text-muted-foreground">{tool.description}</p>
                 </div>
                 <Switch
                   checked={tool.enabled}
